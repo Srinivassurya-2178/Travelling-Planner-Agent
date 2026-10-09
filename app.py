@@ -39,7 +39,8 @@ def process_travel_query(inputs: dict) -> str:
     """
 
     try:
-        llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=GEMINI_API_KEY, temperature=0.3)
+        # Updated model string to gemini-3.8-flash
+        llm = ChatGoogleGenerativeAI(model="gemini-3.8-flash", google_api_key=GEMINI_API_KEY, temperature=0.3)
         response = llm.invoke(prompt)
         return str(response.content)
     except Exception as e:

@@ -2,39 +2,57 @@ import os
 import uvicorn
 from fastapi import FastAPI
 from langserve import add_routes
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.runnables import RunnableLambda
 from pydantic import BaseModel, Field
 
-class AgentInput(BaseModel):
-    input: str = Field(..., description="Health insurance query")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-def process_query(inputs: dict) -> str:
+class AgentInput(BaseModel):
+    input: str = Field(..., description="Travel query or destination")
+
+# Main Travel Agent Logic
+def process_travel_query(inputs: dict) -> str:
     user_query = inputs.get("input", "") if isinstance(inputs, dict) else str(inputs)
     query_lower = user_query.lower()
     
     # Domain Guardrail Check
-    keywords = ["premium", "gold", "silver", "basic", "claim", "coverage", "insurance", "policy", "cashless", "deductible"]
+    keywords = ["travel", "trip", "itinerary", "flight", "hotel", "vizag", "visakhapatnam", "hyderabad", "guide", "destination"]
     if not any(k in query_lower for k in keywords):
-        return "**Authorization Status**: I am not authorized to answer questions outside of health insurance."
+        return "**Authorization Status**: I am not authorized to answer questions outside of travel planning and logistics."
 
-    # Direct Indian Origin Output with LHS Bold and RHS Regular Text
-    return (
-        "**Gold Plan Monthly Premium Estimate**: ₹10,500/month\n\n"
-        "**Gold Plan Annual Premium Estimate**: ₹1,26,000/year\n\n"
-        "**Policy Coverage Details**: 90% coverage with ₹1,200 copay per hospital visit\n\n"
-        "**Cashless Claim Procedure**: Present health TPA card at network hospital insurance desk and submit Pre-Authorization Form\n\n"
-        "**Required Documents for Cashless Claim**: Health TPA Card / Policy ID, Government Photo ID (Aadhaar Card / PAN Card)"
-    )
+    # Formulate structured prompt for Gemini
+    prompt = f"""
+    You are an expert Travel Planner AI Assistant.
+    Provide a detailed, clear, and well-formatted travel guide and itinerary for the following request:
+    "{user_query}"
+    
+    Include:
+    1. Best time to visit
+    2. Mode of transport / travel options
+    3. Key sightseeing attractions
+    4. Suggested day-by-day itinerary
+    5. Local food & cuisine recommendations
+    
+    Format the response clearly using clean Markdown text with bold headings and bullet points. Do NOT output raw JSON.
+    """
 
-# Create LangChain Runnable Chain
-agent_runnable = RunnableLambda(process_query).with_types(input_type=AgentInput)
+    try:
+        llm = ChatGoogleGenerativeAI(model="gemini-3.8-flash", google_api_key=GEMINI_API_KEY, temperature=0.3)
+        response = llm.invoke(prompt)
+        return str(response.content)
+    except Exception as e:
+        return f"Error generating travel guide: {str(e)}"
 
-app = FastAPI(title="Health Insurance Agent API", version="1.0")
+# Create Runnable Wrapper for LangServe
+travel_runnable = RunnableLambda(process_travel_query).with_types(input_type=AgentInput)
+
+app = FastAPI(title="Travel Planner Agent API", version="1.0")
 
 # Mount LangServe Route
 add_routes(
     app,
-    agent_runnable,
+    travel_runnable,
     path="/agent"
 )
 

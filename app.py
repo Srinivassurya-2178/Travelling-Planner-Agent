@@ -7,7 +7,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.runnables import RunnableLambda
 from pydantic import BaseModel, Field
 
-# 1. Custom Tools for Indian Health Insurance Context
+# 1. Custom Tools with Indian Health Insurance Logic
 def check_policy_coverage(plan_type: str, procedure_name: str) -> str:
     plans = {
         "basic": {"coverage": "60%", "copay": "₹4,000", "pre_auth_required": True},
@@ -29,7 +29,7 @@ def guide_claim_submission(claim_type: str) -> str:
         return json.dumps({
             "claim_type": "Cashless",
             "steps": ["Present health TPA card at network hospital insurance desk", "Submit Pre-Authorization Form"],
-            "required_docs": ["Health Card ID / Policy Number", "Government Photo ID (Aadhaar Card / PAN Card)"]
+            "required_docs": ["Health TPA Card / Policy ID", "Government Photo ID (Aadhaar Card / PAN Card)"]
         })
     return json.dumps({
         "claim_type": "Reimbursement",
@@ -51,20 +51,20 @@ def process_query(inputs: dict) -> str:
     if not any(k in query_lower for k in keywords):
         return "**Authorization Status**: I am not authorized to answer questions outside of health insurance."
 
-    # Parse calculation facts
+    # Parse Indian insurance facts
     premium = json.loads(calculate_premium_estimate(35, "gold", 3))
     coverage = json.loads(check_policy_coverage("gold", "general"))
     claim = json.loads(guide_claim_submission("cashless"))
 
     prompt = f"""
-    You are an Indian Health Insurance AI Assistant. Construct a response for the query: "{user_query}"
+    You are an Indian Health Insurance AI Assistant. Answer the query: "{user_query}"
     
     STRICT FORMATTING REQUIREMENTS:
-    1. All currency MUST be in Indian Rupees (₹).
-    2. Format every single line with LHS (Left Hand Side) in **bold** and RHS (Right Hand Side) in normal plain text.
-    3. Format: **Label Name**: Plain text value
+    1. Use Indian Rupees (₹) for all monetary values.
+    2. Format every single output line with LHS (Left-Hand Side label) in **bold** and RHS (Right-Hand Side value) in normal plain text.
+    3. Pattern: **Label Name**: Normal text value
     
-    Data to include:
+    Use these exact values:
     - **Gold Plan Monthly Premium Estimate**: ₹{premium['monthly_estimate_inr']:,}/month
     - **Gold Plan Annual Premium Estimate**: ₹{premium['annual_estimate_inr']:,}/year
     - **Policy Coverage**: {coverage['coverage']} coverage with {coverage['copay']} copay per hospital visit
@@ -77,13 +77,13 @@ def process_query(inputs: dict) -> str:
         response = llm.invoke(prompt)
         return str(response.content)
     except Exception:
-        # Guarantees Indian details and LHS Bold / RHS Regular format even if API key has issues
+        # Guarantees Indian context & LHS bold formatting even during fallback
         return (
             "**Gold Plan Monthly Premium Estimate**: ₹10,500/month\n\n"
             "**Gold Plan Annual Premium Estimate**: ₹1,26,000/year\n\n"
             "**Policy Coverage**: 90% coverage with ₹1,200 copay per hospital visit\n\n"
             "**Cashless Claim Steps**: Present health TPA card at network hospital insurance desk, Submit Pre-Authorization Form\n\n"
-            "**Required Documents for Cashless Claim**: Health Card ID / Policy Number, Government Photo ID (Aadhaar Card / PAN Card)"
+            "**Required Documents for Cashless Claim**: Health TPA Card / Policy ID, Government Photo ID (Aadhaar Card / PAN Card)"
         )
 
 # Create LangChain Runnable Chain

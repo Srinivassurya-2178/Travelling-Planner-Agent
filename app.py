@@ -12,16 +12,14 @@ class AgentInput(BaseModel):
     input: str = Field(..., description="Travel query or destination")
 
 def process_travel_query(inputs: dict) -> str:
-    # 1. Parse input string safely
     user_query = inputs.get("input", "") if isinstance(inputs, dict) else str(inputs)
     query_lower = user_query.lower()
     
-    # 2. Domain Guardrail Check
+    # Domain Guardrail Check
     keywords = ["travel", "trip", "itinerary", "flight", "hotel", "vizag", "visakhapatnam", "hyderabad", "guide", "destination"]
     if not any(k in query_lower for k in keywords):
         return "I am not authorized to answer questions outside of travel planning and logistics."
 
-    # 3. Construct explicit prompt requesting plain formatted Markdown text
     prompt = f"""
     You are an expert Travel Planner AI Assistant.
     Provide a detailed, clear, and well-formatted travel guide and itinerary for the following request:
@@ -29,7 +27,7 @@ def process_travel_query(inputs: dict) -> str:
     
     Include:
     1. Best time to visit
-    2. Mode of transport / travel options
+    2. Mode of transport / travel options (including key train options in a clean Markdown table)
     3. Key sightseeing attractions
     4. Suggested day-by-day itinerary
     5. Local food & cuisine recommendations
@@ -38,7 +36,6 @@ def process_travel_query(inputs: dict) -> str:
     """
 
     try:
-        # Call model
         llm = ChatGoogleGenerativeAI(
             model="gemini-3.8-flash", 
             google_api_key=GEMINI_API_KEY, 
@@ -46,10 +43,9 @@ def process_travel_query(inputs: dict) -> str:
         )
         response = llm.invoke(prompt)
         
-        # 4. Extract pure string content to avoid returning LLMResult objects
+        # Extract pure string content to remove internal LangChain LLMResult metadata wrappers
         if hasattr(response, 'content'):
             if isinstance(response.content, list):
-                # Handle structured content blocks if present
                 text_parts = [part.get('text', '') if isinstance(part, dict) else str(part) for part in response.content]
                 return "".join(text_parts)
             return str(response.content)
@@ -58,7 +54,7 @@ def process_travel_query(inputs: dict) -> str:
     except Exception as e:
         return f"Error generating travel guide: {str(e)}"
 
-# Wrap execution logic into a Runnable
+# Create Runnable Wrapper for LangServe
 travel_runnable = RunnableLambda(process_travel_query).with_types(input_type=AgentInput)
 
 app = FastAPI(title="Travel Planner Agent API", version="1.0")

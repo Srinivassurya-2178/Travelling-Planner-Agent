@@ -11,17 +11,17 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 class AgentInput(BaseModel):
     input: str = Field(..., description="Travel query or destination")
 
-# Main Travel Agent Logic
 def process_travel_query(inputs: dict) -> str:
+    # 1. Parse input string safely
     user_query = inputs.get("input", "") if isinstance(inputs, dict) else str(inputs)
     query_lower = user_query.lower()
     
-    # Domain Guardrail Check
+    # 2. Domain Guardrail Check
     keywords = ["travel", "trip", "itinerary", "flight", "hotel", "vizag", "visakhapatnam", "hyderabad", "guide", "destination"]
     if not any(k in query_lower for k in keywords):
-        return "**Authorization Status**: I am not authorized to answer questions outside of travel planning and logistics."
+        return "I am not authorized to answer questions outside of travel planning and logistics."
 
-    # Formulate structured prompt for Gemini
+    # 3. Construct explicit prompt requesting plain formatted Markdown text
     prompt = f"""
     You are an expert Travel Planner AI Assistant.
     Provide a detailed, clear, and well-formatted travel guide and itinerary for the following request:
@@ -34,17 +34,31 @@ def process_travel_query(inputs: dict) -> str:
     4. Suggested day-by-day itinerary
     5. Local food & cuisine recommendations
     
-    Format the response clearly using clean Markdown text with bold headings and bullet points. Do NOT output raw JSON.
+    Format the response clearly using clean Markdown text with bold headings and bullet points. Do NOT output raw JSON or code wrappers.
     """
 
     try:
-        llm = ChatGoogleGenerativeAI(model="gemini-3.8-flash", google_api_key=GEMINI_API_KEY, temperature=0.3)
+        # Call model
+        llm = ChatGoogleGenerativeAI(
+            model="gemini-3.8-flash", 
+            google_api_key=GEMINI_API_KEY, 
+            temperature=0.3
+        )
         response = llm.invoke(prompt)
-        return str(response.content)
+        
+        # 4. Extract pure string content to avoid returning LLMResult objects
+        if hasattr(response, 'content'):
+            if isinstance(response.content, list):
+                # Handle structured content blocks if present
+                text_parts = [part.get('text', '') if isinstance(part, dict) else str(part) for part in response.content]
+                return "".join(text_parts)
+            return str(response.content)
+        return str(response)
+
     except Exception as e:
         return f"Error generating travel guide: {str(e)}"
 
-# Create Runnable Wrapper for LangServe
+# Wrap execution logic into a Runnable
 travel_runnable = RunnableLambda(process_travel_query).with_types(input_type=AgentInput)
 
 app = FastAPI(title="Travel Planner Agent API", version="1.0")

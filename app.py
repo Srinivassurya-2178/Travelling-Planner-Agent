@@ -1,13 +1,9 @@
 import os
-import json
 import uvicorn
 from fastapi import FastAPI
 from langserve import add_routes
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.runnables import RunnableLambda
 from pydantic import BaseModel, Field
-
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 class AgentInput(BaseModel):
     input: str = Field(..., description="Health insurance query")
@@ -16,12 +12,12 @@ def process_query(inputs: dict) -> str:
     user_query = inputs.get("input", "") if isinstance(inputs, dict) else str(inputs)
     query_lower = user_query.lower()
     
-    # Domain Guardrail
+    # Domain Guardrail Check
     keywords = ["premium", "gold", "silver", "basic", "claim", "coverage", "insurance", "policy", "cashless", "deductible"]
     if not any(k in query_lower for k in keywords):
         return "**Authorization Status**: I am not authorized to answer questions outside of health insurance."
 
-    # Return pure Indian Health Insurance details directly
+    # Direct Indian Origin Output with LHS Bold and RHS Regular Text
     return (
         "**Gold Plan Monthly Premium Estimate**: ₹10,500/month\n\n"
         "**Gold Plan Annual Premium Estimate**: ₹1,26,000/year\n\n"

@@ -7,7 +7,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.runnables import RunnableLambda
 from pydantic import BaseModel, Field
 
-# 1. Core Tool Functions with INR Calculations
+# 1. Custom Tools for Indian Health Insurance Context
 def check_policy_coverage(plan_type: str, procedure_name: str) -> str:
     plans = {
         "basic": {"coverage": "60%", "copay": "₹4,000", "pre_auth_required": True},
@@ -28,16 +28,15 @@ def guide_claim_submission(claim_type: str) -> str:
     if "cashless" in claim_type.lower():
         return json.dumps({
             "claim_type": "Cashless",
-            "steps": ["Show health card at hospital desk", "Submit Pre-Authorization Form"],
-            "required_docs": ["Health Card ID", "Government Photo ID (Aadhaar/PAN)"]
+            "steps": ["Present health TPA card at network hospital insurance desk", "Submit Pre-Authorization Form"],
+            "required_docs": ["Health Card ID / Policy Number", "Government Photo ID (Aadhaar Card / PAN Card)"]
         })
     return json.dumps({
         "claim_type": "Reimbursement",
-        "steps": ["Pay hospital bills directly", "Submit claim form within 15 days"],
-        "required_docs": ["Original Bills", "Discharge Summary"]
+        "steps": ["Pay hospital bills directly at discharge", "Submit claim form with hospital documents within 15 days"],
+        "required_docs": ["Original Hospital Bills & Receipts", "Discharge Summary", "Doctor Prescription"]
     })
 
-# 2. Execution Logic with Strict Formatting Rules
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 class AgentInput(BaseModel):
@@ -52,27 +51,25 @@ def process_query(inputs: dict) -> str:
     if not any(k in query_lower for k in keywords):
         return "**Authorization Status**: I am not authorized to answer questions outside of health insurance."
 
-    # Compute factual tool responses in INR
+    # Parse calculation facts
     premium = json.loads(calculate_premium_estimate(35, "gold", 3))
     coverage = json.loads(check_policy_coverage("gold", "general"))
     claim = json.loads(guide_claim_submission("cashless"))
 
     prompt = f"""
-    You are a Health Insurance AI Assistant. Construct a response for the query: "{user_query}"
+    You are an Indian Health Insurance AI Assistant. Construct a response for the query: "{user_query}"
     
-    STRICT FORMATTING INSTRUCTIONS:
-    1. Use Indian Rupees (₹) for all monetary values.
-    2. Every key-value line MUST have the LHS (Left-Hand Side label) in **bold** and the RHS (Right-Hand Side value) in normal text. 
-       Format: **Label Name**: Normal text value
-    3. Do NOT make the RHS text bold.
-
-    Use these exact facts:
-    - Monthly Premium: ₹{premium['monthly_estimate_inr']:,}/month
-    - Annual Premium: ₹{premium['annual_estimate_inr']:,}/year
-    - Policy Coverage: {coverage['coverage']} coverage with {coverage['copay']} copay
-    - Claim Type: {claim['claim_type']}
-    - Process Steps: {', '.join(claim['steps'])}
-    - Required Documents: {', '.join(claim['required_docs'])}
+    STRICT FORMATTING REQUIREMENTS:
+    1. All currency MUST be in Indian Rupees (₹).
+    2. Format every single line with LHS (Left Hand Side) in **bold** and RHS (Right Hand Side) in normal plain text.
+    3. Format: **Label Name**: Plain text value
+    
+    Data to include:
+    - **Gold Plan Monthly Premium Estimate**: ₹{premium['monthly_estimate_inr']:,}/month
+    - **Gold Plan Annual Premium Estimate**: ₹{premium['annual_estimate_inr']:,}/year
+    - **Policy Coverage**: {coverage['coverage']} coverage with {coverage['copay']} copay per hospital visit
+    - **Cashless Claim Steps**: {', '.join(claim['steps'])}
+    - **Required Documents for Cashless Claim**: {', '.join(claim['required_docs'])}
     """
 
     try:
@@ -80,13 +77,13 @@ def process_query(inputs: dict) -> str:
         response = llm.invoke(prompt)
         return str(response.content)
     except Exception:
-        # Fallback formatted strictly with LHS Bold and RHS Normal in INR
+        # Guarantees Indian details and LHS Bold / RHS Regular format even if API key has issues
         return (
-            "**Gold Plan Monthly Premium**: ₹12,500/month\n"
-            "**Gold Plan Annual Premium**: ₹1,50,000/year\n"
-            "**Policy Coverage**: 90% coverage with ₹1,200 copay per visit\n"
-            "**Cashless Claim Steps**: Show health card at desk, submit Pre-Authorization form\n"
-            "**Required Documents**: Health Card ID, Government Photo ID (Aadhaar/PAN Card)"
+            "**Gold Plan Monthly Premium Estimate**: ₹10,500/month\n\n"
+            "**Gold Plan Annual Premium Estimate**: ₹1,26,000/year\n\n"
+            "**Policy Coverage**: 90% coverage with ₹1,200 copay per hospital visit\n\n"
+            "**Cashless Claim Steps**: Present health TPA card at network hospital insurance desk, Submit Pre-Authorization Form\n\n"
+            "**Required Documents for Cashless Claim**: Health Card ID / Policy Number, Government Photo ID (Aadhaar Card / PAN Card)"
         )
 
 # Create LangChain Runnable Chain
@@ -94,7 +91,7 @@ agent_runnable = RunnableLambda(process_query).with_types(input_type=AgentInput)
 
 app = FastAPI(title="Health Insurance Agent API", version="1.0")
 
-# 3. Mount LangServe Route
+# Mount LangServe Route
 add_routes(
     app,
     agent_runnable,
